@@ -1,1 +1,1 @@
-{"resultado":"ok","ultimaExecucao":"2026-10-01T23:30:56.6693528-03:00","maquina":"GUSTAVO","mensagem":"207,680 bytes baixados -\u003e D:\\sistemas\\formatura-relatorios\\dados.enc (207,724 bytes criptografados)"}
+{"resultado":"erro","ultimaExecucao":"2026-10-02T23:31:36.6234566-03:00","maquina":"GUSTAVO","mensagem":"Falhou: Locator.click: Timeout 10000ms exceeded."}
