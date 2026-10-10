@@ -1,1 +1,1 @@
-{"resultado":"ok","ultimaExecucao":"2026-10-08T23:31:05.8456031-03:00","maquina":"GUSTAVO","mensagem":"207,712 bytes baixados -\u003e D:\\sistemas\\formatura-relatorios\\dados.enc (207,756 bytes criptografados)"}
+{"resultado":"erro","ultimaExecucao":"2026-10-09T23:31:04.6077028-03:00","maquina":"GUSTAVO","mensagem":"Falhou: Page.goto: Timeout 30000ms exceeded."}
