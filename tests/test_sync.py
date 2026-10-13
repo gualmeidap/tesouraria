@@ -113,6 +113,9 @@ def test_rodar_ps1_tem_prazo_maximo_e_espera_a_rede():
     ps = (ROOT / "sync" / "rodar.ps1").read_text(encoding="utf-8-sig")
     assert "WaitForExit(" in ps and "taskkill" in ps    # em 12/10 travou 2 h sem limite
     assert "GetHostAddresses" in ps                      # espera a internet voltar depois de ligar/acordar
+    assert "$proc.Handle" in ps                          # sem isto o ExitCode vem vazio e a rodada é marcada como erro
+    assert "--autostash" in ps                           # pull com dados.enc/status.json já modificados
+    assert "$LASTEXITCODE -ne 0" in ps                   # falha de git pull/commit/push não pode passar batida
 
 
 def test_dados_enc_is_ciphertext_if_present():

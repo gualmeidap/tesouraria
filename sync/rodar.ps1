@@ -39,8 +39,11 @@ try {
     $tmpOut = Join-Path $PSScriptRoot "saida-robo.tmp"; $tmpErr = Join-Path $PSScriptRoot "saida-robo-err.tmp"
     $proc = Start-Process -FilePath $py -ArgumentList "`"$(Join-Path $PSScriptRoot 'sync.py')`"" -NoNewWindow -PassThru `
         -RedirectStandardOutput $tmpOut -RedirectStandardError $tmpErr
+    $null = $proc.Handle   # sem isto o ExitCode vem vazio (null) com WaitForExit(timeout) e tudo parecia erro
     $terminou = $proc.WaitForExit(15 * 60 * 1000)
-    if (-not $terminou) {
+    if ($terminou) {
+        $proc.WaitForExit()   # finaliza a leitura do código de saída
+    } else {
         & taskkill /PID $proc.Id /T /F | Out-Null   # mata o Python e o Chromium que ele abriu
     }
     $saidaPy = @()
@@ -49,7 +52,8 @@ try {
     }
     $saidaPy | ForEach-Object { Write-Host $_ }
     if (-not $terminou) { throw "Tempo esgotado: o robô passou de 15 min e foi encerrado" }
-    if ($proc.ExitCode -ne 0) { throw (($saidaPy | Select-Object -Last 1) -replace '\s+', ' ') }
+    $okLinha = $saidaPy | Where-Object { $_ -match '^OK:' } | Select-Object -Last 1
+    if ($proc.ExitCode -ne 0 -and -not $okLinha) { throw (($saidaPy | Select-Object -Last 1) -replace '\s+', ' ') }
 
     $resultado = "ok"
     $mensagem = ($saidaPy | Where-Object { $_ -match '^OK:' } | Select-Object -Last 1) -replace '^OK:\s*', ''
@@ -69,12 +73,16 @@ $status = @{
 
 try {
     Write-Host "Publicando no GitHub..."
-    git pull -q --rebase origin main
+    # --autostash: dados.enc/status.json já estão modificados aqui; sem isso o pull recusa quando há commit local à frente
+    git pull -q --rebase --autostash origin main
+    if ($LASTEXITCODE -ne 0) { throw "git pull falhou (código $LASTEXITCODE)" }
     git add dados.enc status.json
     if (git status --porcelain dados.enc status.json) {
         $prefixo = if ($resultado -eq "ok") { "dados" } else { "robô falhou" }
         git commit -q -m "${prefixo}: $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
+        if ($LASTEXITCODE -ne 0) { throw "git commit falhou (código $LASTEXITCODE)" }
         git push -q origin main
+        if ($LASTEXITCODE -ne 0) { throw "git push falhou (código $LASTEXITCODE)" }
         Write-Host "Publicado ($resultado)."
     }
 } catch {
