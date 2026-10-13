@@ -1,4 +1,4 @@
-# Roda o robô no PC: baixa a planilha do Keeper, criptografa e publica no GitHub (Pages).
+﻿# Roda o robô no PC: baixa a planilha do Keeper, criptografa e publica no GitHub (Pages).
 # Também publica status.json (sucesso ou falha) para o app e o histórico de commits mostrarem
 # quando o robô rodou pela última vez.
 #
@@ -25,10 +25,31 @@ try {
     $py = Join-Path $root ".venv\Scripts\python.exe"
     if (-not (Test-Path $py)) { $py = "python" }
 
+    # Logo depois de ligar/acordar o PC a rede pode demorar: espera até 3 min o Keeper responder (DNS)
+    $rede = $false
+    for ($i = 0; $i -lt 18 -and -not $rede; $i++) {
+        try { [void][Net.Dns]::GetHostAddresses("conta.keeperformaturas.com.br"); $rede = $true }
+        catch { Start-Sleep -Seconds 10 }
+    }
+    if (-not $rede) { throw "Sem internet/DNS para conta.keeperformaturas.com.br após 3 min" }
+
     Write-Host "[$(Get-Date -Format 'dd/MM/yyyy HH:mm')] Baixando planilha do Keeper..."
-    $saida = & $py (Join-Path $PSScriptRoot "sync.py") 2>&1 | Tee-Object -Variable saidaPy
-    $saida | ForEach-Object { Write-Host $_ }
-    if ($LASTEXITCODE -ne 0) { throw (($saidaPy | Select-Object -Last 1) -replace '\s+', ' ') }
+    # Roda o robô com prazo máximo: em 12/10 ele travou 2 horas (sem limite) e só morreu quando o Windows desligou.
+    $env:PYTHONIOENCODING = "utf-8"
+    $tmpOut = Join-Path $PSScriptRoot "saida-robo.tmp"; $tmpErr = Join-Path $PSScriptRoot "saida-robo-err.tmp"
+    $proc = Start-Process -FilePath $py -ArgumentList "`"$(Join-Path $PSScriptRoot 'sync.py')`"" -NoNewWindow -PassThru `
+        -RedirectStandardOutput $tmpOut -RedirectStandardError $tmpErr
+    $terminou = $proc.WaitForExit(15 * 60 * 1000)
+    if (-not $terminou) {
+        & taskkill /PID $proc.Id /T /F | Out-Null   # mata o Python e o Chromium que ele abriu
+    }
+    $saidaPy = @()
+    foreach ($f in @($tmpOut, $tmpErr)) {
+        if (Test-Path $f) { $saidaPy += Get-Content $f -Encoding UTF8 | Where-Object { $_ -and $_.Trim() }; Remove-Item $f -Force -ErrorAction SilentlyContinue }
+    }
+    $saidaPy | ForEach-Object { Write-Host $_ }
+    if (-not $terminou) { throw "Tempo esgotado: o robô passou de 15 min e foi encerrado" }
+    if ($proc.ExitCode -ne 0) { throw (($saidaPy | Select-Object -Last 1) -replace '\s+', ' ') }
 
     $resultado = "ok"
     $mensagem = ($saidaPy | Where-Object { $_ -match '^OK:' } | Select-Object -Last 1) -replace '^OK:\s*', ''

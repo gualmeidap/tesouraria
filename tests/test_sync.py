@@ -64,6 +64,57 @@ def test_env_missing_exits(monkeypatch):
         sync.env("KEEPER_EMAIL")
 
 
+def _robo_com_login(monkeypatch, tmp_path, login):
+    from unittest.mock import MagicMock
+    monkeypatch.setattr(sync, "sync_playwright", lambda: MagicMock())
+    monkeypatch.setattr(sync, "login", login)
+    monkeypatch.setattr(sync, "download_report", lambda page: b"PK\x03\x04planilha")
+    monkeypatch.setattr(sync.time, "sleep", lambda s: None)
+    monkeypatch.setenv("KEEPER_EMAIL", "a@b.c")
+    monkeypatch.setenv("KEEPER_SENHA", "x")
+    monkeypatch.setenv("DATA_KEY", "chave")
+    monkeypatch.setenv("OUT", str(tmp_path / "dados.enc"))
+
+
+def test_robo_tenta_de_novo_quando_o_site_demora(monkeypatch, tmp_path):
+    """Falhas de 02-11/10: Timeout no goto/click. Agora ele repete e publica se alguma tentativa der certo."""
+    chamadas = {"n": 0}
+
+    def login_instavel(page, email, senha):
+        chamadas["n"] += 1
+        if chamadas["n"] < 3:
+            raise RuntimeError("Page.goto: Timeout 60000ms exceeded.")
+
+    _robo_com_login(monkeypatch, tmp_path, login_instavel)
+    sync.main()
+    assert chamadas["n"] == 3
+    assert (tmp_path / "dados.enc").exists()
+
+
+def test_robo_desiste_depois_das_tentativas(monkeypatch, tmp_path):
+    def login_quebrado(page, email, senha):
+        raise RuntimeError("sempre falha")
+
+    _robo_com_login(monkeypatch, tmp_path, login_quebrado)
+    with pytest.raises(SystemExit) as e:
+        sync.main()
+    assert f"{sync.TENTATIVAS} tentativas" in str(e.value)
+    assert not (tmp_path / "dados.enc").exists(), "não pode gravar dados.enc se todas falharam"
+
+
+def test_robo_nao_depende_de_networkidle_nem_de_chamadas_sem_limite():
+    src = (ROOT / "sync" / "sync.py").read_text(encoding="utf-8")
+    assert 'goto(SITE, wait_until="networkidle"' not in src
+    assert src.count("AbortController") >= 2          # os dois fetch têm limite de tempo
+    assert sync.NAV_TIMEOUT >= 60_000 and sync.TENTATIVAS >= 3
+
+
+def test_rodar_ps1_tem_prazo_maximo_e_espera_a_rede():
+    ps = (ROOT / "sync" / "rodar.ps1").read_text(encoding="utf-8-sig")
+    assert "WaitForExit(" in ps and "taskkill" in ps    # em 12/10 travou 2 h sem limite
+    assert "GetHostAddresses" in ps                      # espera a internet voltar depois de ligar/acordar
+
+
 def test_dados_enc_is_ciphertext_if_present():
     enc = ROOT / "dados.enc"
     if not enc.exists():

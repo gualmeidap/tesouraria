@@ -8,3 +8,4 @@ __pycache__/
 sync/ultimo-log.txt
 .venv/
 tests/.inline-*.js
+sync/saida-robo*.tmp
